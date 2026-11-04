@@ -24,7 +24,8 @@ Not affiliated with or endorsed by Image-Line. FL Studio is a trademark of Image
 ## Mods
 
 - **Companion** (experimental): a controller script that runs inside FL. It colours channels, mixer tracks and playlist tracks from words in their names, names empty mixer tracks after the channel routed to them, can autosave, and shows session time in FL's hint bar. Attach it once in FL under Options, MIDI settings, by choosing "FLPTools Companion" as the controller type for a MIDI input.
-- **Startup animations:** five animations (Rise, Shockwave, Spin, Glitch, Orbit) that FL plays on its loading screen, rendered from your FL icon.
+- **Window animations** (experimental): FL's windows fade in as they open and floating ones rise into place. Done from outside FL while FLPTools is running; FL's files are not changed.
+- **Startup animations:** seven animations (Bloom, Waveform, Equalizer, Neon, Assemble, Pulse, Glitch) in a colour you pick, played by FL on its loading screen and rendered from your FL icon.
 - **Piano roll scripts:** Scale Snap, Chordify, Strum, Hi-Hat Rolls, Velocity Shaper, Legato and Gaps, Reverse and Mirror, Quantize Plus, Melody Generator, 808 Glide, Octave Doubler, Thin Out, Bassline From Chords, Colorize Notes, Duplicate and Vary.
 - **Edison scripts:** Fade, Tape Stop, Stutter, Saturator, Stereo Width, Downsampler, Gain To Peak.
 - **Themes:** a generator for FL themes and note colour presets, with a preview.
