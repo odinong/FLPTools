@@ -36,6 +36,10 @@ public sealed class LauncherSettings
     public bool Sounds { get; set; } = true;
     public bool Animations { get; set; } = true;
     public bool MinimizeOnLaunch { get; set; } = true;
+    public bool FlWindowAnim { get; set; }                 // fade FL's windows in as they open
+    public int FlWindowAnimMs { get; set; } = 220;
+    public bool FlWindowAnimRise { get; set; } = true;
+    public bool FlWindowAnimInside { get; set; }
     public string Theme { get; set; } = "dark";
 }
 

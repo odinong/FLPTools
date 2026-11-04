@@ -33,6 +33,7 @@ public sealed class Bridge
         launcher = new FlLauncher(state, Save);
         launcher.RestoreFinished(installs);
         Save();
+        form.ApplyWindowAnimations(state.Settings);
     }
 
     void Save() => LauncherStore.Save(state);
@@ -117,7 +118,16 @@ public sealed class Bridge
             case "settings.save":
                 state.Settings = a["settings"].Deserialize<LauncherSettings>(LauncherStore.Json)!;
                 Save();
+                form.ApplyWindowAnimations(state.Settings);
                 return true;
+            case "winanim.try":
+            {
+                // Try the effect on another program (for checking it without FL): animates that process's windows for 30 s.
+                var name = S(a, "process");
+                form.ApplyWindowAnimations(state.Settings, name);
+                _ = Task.Delay(30000).ContinueWith(_ => { form.RemoveAnimationTarget(name); form.ApplyWindowAnimations(state.Settings); });
+                return true;
+            }
             case "launch": return Launch(S(a, "id"), S(a, "project"));
             case "recent":
             {
@@ -151,6 +161,13 @@ public sealed class Bridge
             case "app.maximize": form.ToggleMaximize(); return form.WindowState == FormWindowState.Maximized;
             case "app.drag": form.BeginDrag(); return true;
             case "app.close": form.Close(); return true;
+            case "shell.run":
+            {
+                var file = S(a, "file");
+                if (!file.Equals("notepad.exe", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Not allowed.");
+                Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });
+                return true;
+            }
             case "shell.reveal":
             {
                 var p = S(a, "path");
@@ -287,12 +304,13 @@ public sealed class Bridge
             case "splash.styles":
                 return new JsonObject
                 {
-                    ["styles"] = new JsonArray(FlMods.SplashStyles.Select(x => (JsonNode)new JsonObject { ["id"] = x.Id, ["label"] = x.Label }).ToArray()),
+                    ["styles"] = new JsonArray(SplashRenderer.Styles.Select(x => (JsonNode)new JsonObject { ["id"] = x.Id, ["label"] = x.Label }).ToArray()),
+                    ["accents"] = new JsonArray(FlMods.Accents.Select(x => (JsonNode)x).ToArray()),
                     ["current"] = FlMods.CurrentSplash(installs),
-                    ["frames"] = FlMods.Frames, ["w"] = FlMods.FrameW / 2, ["h"] = FlMods.FrameH / 2,
+                    ["frames"] = FlMods.Frames, ["w"] = SplashRenderer.W / 2, ["h"] = SplashRenderer.H / 2,
                 };
-            case "splash.preview": return FlMods.SplashPreview(S(a, "style"), installs.Last().Exe);
-            case "splash.apply": FlMods.ApplySplash(S(a, "style"), installs); return FlMods.CurrentSplash(installs);
+            case "splash.preview": return FlMods.SplashPreview(S(a, "spec"), installs.Last().Exe);
+            case "splash.apply": FlMods.ApplySplash(S(a, "spec"), installs); return FlMods.CurrentSplash(installs);
             case "paths":
                 return new JsonObject
                 {

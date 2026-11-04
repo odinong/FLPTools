@@ -81,6 +81,7 @@ const sfx = (() => {
     ok: () => { click(1250, 0.05, 0.035); click(1660, 0.07, 0.03, 0.05); },
     back: () => click(950, 0.05, 0.03),
     start: () => { click(660, 0.12, 0.035); click(990, 0.16, 0.03, 0.09); click(1320, 0.3, 0.025, 0.18); },
+    boot: () => { click(523, 0.5, 0.02, 0.15); click(784, 0.6, 0.018, 0.32); click(1046, 0.9, 0.016, 0.5); },
     bad: () => click(190, 0.14, 0.045),
   };
 })();
@@ -215,8 +216,20 @@ async function setBackdrop({ src, color }) {
 async function start() {
   setupTitlebar();
   apply(await api('init'));
+  document.body.classList.add('intro');
   $('#app').hidden = false;
   drawHome(true);
+  sfx.boot();
+  setTimeout(() => document.body.classList.remove('intro'), 1900);
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { hiddenAt = performance.now(); return; }
+    if (state.page || performance.now() - hiddenAt < 1500) return;
+    document.body.classList.remove('wake'); void document.body.offsetWidth;
+    document.body.classList.add('wake');
+    if (fx) fx.surge(0.35), setTimeout(() => fx && fx.surge(0), 450);
+    setTimeout(() => document.body.classList.remove('wake'), 1000);
+  });
   setInterval(clock, 1000);
   clock();
   setInterval(poll, 4000);
@@ -626,9 +639,10 @@ PAGES.config = {
         el.append(sec('Play time'), rows(row(playtime(c.playSeconds), ago(c.lastPlayed))));
       } },
       { label: 'When it starts', draw: el => {
-        const splashPick = h('select', { class: 'input', onchange: e => set('splash')(e.target.value) },
+        const splashStyle = (c.splash || '').split('@')[0];
+        const splashPick = h('select', { class: 'input', onchange: e => set('splash')(e.target.value ? e.target.value + '@' + colorOf(c).slice(1) : '') },
           h('option', { value: '', selected: !c.splash }, 'FL\'s own'));
-        api('splash.styles').then(r => r.styles.forEach(x => splashPick.append(h('option', { value: x.id, selected: c.splash === x.id }, x.label)))).catch(() => {});
+        api('splash.styles').then(r => r.styles.forEach(x => splashPick.append(h('option', { value: x.id, selected: splashStyle === x.id }, x.label)))).catch(() => {});
         const recent = button('Recent', async () => {
           const inst = installOf(c);
           const list = inst ? await api('recent', { install: inst.id }) : [];
@@ -647,7 +661,7 @@ PAGES.config = {
           fileRow('Theme', 'FL\'s own setting', 'theme', 'theme', '', [themePick]),
           fileRow('Background picture', 'FL\'s own setting', 'wallpaper', 'image'),
           row('Full screen', null, toggle(c.fullscreen, set('fullscreen'))),
-          row('Startup animation', 'Plays while FL loads', splashPick)));
+          row('Startup animation', 'Plays while FL loads, in this config\'s tile colour', splashPick)));
         el.append(note('Template, theme, background and full screen are written into FL\'s settings just before it starts. They only apply when that FL version isn\'t already open.'));
       } },
       { label: 'Extras', draw: el => el.append(rows(
@@ -946,6 +960,7 @@ PAGES.mods = {
     };
     const count = kind => { const ms = mods.filter(m => m.kind === kind); return `${ms.filter(m => m.installed).length} of ${ms.length} installed`; };
     sections(p, [
+      { label: 'Window animations', sub: 'FL windows fade in', draw: el => windowAnimPane(el) },
       { label: 'Companion', sub: 'Runs inside FL', draw: el => companionPane(el) },
       { label: 'Startup animation', sub: 'Plays while FL loads', draw: el => splashPane(el) },
       { label: 'Piano roll scripts', sub: count('pianoroll'), draw: list('pianoroll', 'In FL: piano roll menu, Tools, Scripting.', paths.pianoRoll) },
@@ -1006,22 +1021,43 @@ async function companionPane(el) {
   if (st.log.length) el.append(sec('Recent activity'), h('div', { class: 'log' }, st.log.join('\n')));
 }
 
+function windowAnimPane(el) {
+  const s = state.settings;
+  const save = () => run(() => api('settings.save', { settings: s }));
+  const set = k => v => { s[k] = v; save(); };
+  el.append(note('FL windows (mixer, piano roll, plugins, dialogs) fade in when they open, and floating ones rise into place. FL itself is not changed: FLPTools does it from outside while it is open (minimized is fine). Turn it off here if a window ever looks wrong.'));
+  el.append(rows(
+    row('Window animations', null, toggle(!!s.flWindowAnim, set('flWindowAnim'))),
+    row('Speed', null, h('select', { class: 'input', onchange: e => set('flWindowAnimMs')(+e.target.value) },
+      [[150, 'Quick'], [220, 'Smooth'], [380, 'Slow']].map(([v, l]) => h('option', { value: v, selected: (s.flWindowAnimMs || 220) === v }, l)))),
+    row('Rise into place', 'Floating windows slide up a little as they fade in', toggle(s.flWindowAnimRise !== false, set('flWindowAnimRise'))),
+    row('Windows inside FL\'s main window', 'Experimental. Docked windows like the playlist and channel rack', toggle(!!s.flWindowAnimInside, set('flWindowAnimInside')))));
+  el.append(sec('Try it'), rows(row('See the effect without FL', 'Opens Notepad with the animation applied to it',
+    button('Try on Notepad', async () => { await run(() => api('winanim.try', { process: 'notepad' })); api('shell.run', { file: 'notepad.exe' }).catch(() => toast('Open Notepad yourself within 30 seconds to see it.')); }, 'sm'))));
+}
+
 async function splashPane(el) {
   const info = await run(() => api('splash.styles'));
   if (!info) return;
   let current = info.current;
+  let accent = (current.split('@')[1] ? '#' + current.split('@')[1] : info.accents[0]).toLowerCase();
   el.append(note('An animation FL plays on its loading screen, made from your FL icon. It applies to every FL version on this PC. A launch config can also pick its own.'));
+  const colors = h('div', { class: 'colors', style: { justifyContent: 'flex-start', marginBottom: '16px' } });
+  const drawColors = () => colors.replaceChildren(...info.accents.map(x => h('button', { class: x === accent ? 'on' : '', style: { '--c': x }, onclick: () => { accent = x; drawColors(); draw(); } })),
+    h('input', { type: 'color', class: 'sw', value: accent, onchange: e => { accent = e.target.value.toLowerCase(); drawColors(); draw(); } }));
   const grid = h('div', { class: 'splash-grid' });
-  const choose = async id => { current = await run(() => api('splash.apply', { style: id }), id ? 'FL will play it next time it starts.' : 'FL\'s own loading screen is back.'); if (current !== undefined) draw(); };
+  const choose = async spec => { const r = await run(() => api('splash.apply', { spec }), spec ? 'FL will play it next time it starts.' : 'FL\'s own loading screen is back.'); if (r !== undefined) { current = r; draw(); } };
   const draw = () => grid.replaceChildren(
     h('button', { class: 'splash' + (!current ? ' on' : ''), onclick: () => choose('') }, h('div', { class: 'pv-none' }, 'FL\'s own'), h('span', {}, 'Default')),
     ...info.styles.map(s => {
-      const pv = h('div', { class: 'pv-anim', style: { '--w': info.w + 'px', '--h': info.h + 'px', '--n': info.frames } });
-      api('splash.preview', { style: s.id }).then(url => pv.style.backgroundImage = `url("${url}")`).catch(() => {});
-      return h('button', { class: 'splash' + (current === s.id ? ' on' : ''), onclick: () => choose(s.id) }, pv, h('span', {}, s.label));
+      const spec = s.id + '@' + accent.slice(1);
+      const pv = h('div', { class: 'pv-anim loading', style: { '--n': info.frames } });
+      api('splash.preview', { spec }).then(url => { pv.style.backgroundImage = `url("${url}")`; pv.classList.remove('loading'); }).catch(() => {});
+      return h('button', { class: 'splash' + (current.toLowerCase() === spec.toLowerCase() ? ' on' : ''), onclick: () => choose(spec) }, pv, h('span', {}, s.label));
     }));
+  drawColors();
   draw();
-  el.append(grid);
+  el.append(sec('Colour'), colors, sec('Style'), grid);
 }
 
 // ------------------------------------------------------------------ themes

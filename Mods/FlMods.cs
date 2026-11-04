@@ -105,30 +105,48 @@ public static class FlMods
     }
 
     // ------------------------------------------------------------------ startup animations
+    // A startup animation is chosen as "style@rrggbb" (style id + accent colour). FL plays a horizontal
+    // strip of frames named by the theme key SplashAnim=<frames>-<file> and keeps the registry value
+    // General\SplashImage=<frames>-<full path>.
 
-    public sealed record SplashStyle(string Id, string Label);
-
-    public static readonly SplashStyle[] SplashStyles =
-    {
-        new("rise", "Rise"), new("shockwave", "Shockwave"), new("spin", "Spin"), new("glitch", "Glitch"), new("orbit", "Orbit"),
-    };
-
-    public const int Frames = 48, FrameW = 400, FrameH = 569;
+    public const int Frames = SplashRenderer.Frames;
+    public const string DefaultAccent = "#ff8a1f";
     const string SplashPrefix = "flptools_splash_";
+    const string SplashVersion = "v2";
 
-    /// <summary>The sprite strip FL reads for a style (lives next to the themes, where FL looks for SplashAnim files).</summary>
-    public static string SplashFile(string style) => Path.Combine(FlPaths.ThemesDir, SplashPrefix + style + ".png");
+    public static readonly string[] Accents = { "#ff8a1f", "#ff3d6e", "#16c7ff", "#3ee08b", "#a46bff", "#ffd23f", "#ffffff" };
+
+    public static (string Style, Color Accent) ParseSpec(string spec)
+    {
+        var parts = spec.Split('@');
+        var style = SplashRenderer.Styles.Any(x => x.Id == parts[0]) ? parts[0] : SplashRenderer.Styles[0].Id;
+        Color accent;
+        try { accent = ColorTranslator.FromHtml(parts.Length > 1 ? "#" + parts[1].TrimStart('#') : DefaultAccent); }
+        catch { accent = ColorTranslator.FromHtml(DefaultAccent); }
+        return (style, accent);
+    }
+
+    static string SpecKey(string spec)
+    {
+        var (style, c) = ParseSpec(spec);
+        return $"{style}_{c.R:x2}{c.G:x2}{c.B:x2}_{SplashVersion}";
+    }
+
+    /// <summary>The sprite strip FL reads for a spec (lives next to the themes, where FL looks for SplashAnim files).</summary>
+    public static string SplashFile(string spec) => Path.Combine(FlPaths.ThemesDir, SplashPrefix + SpecKey(spec) + ".png");
 
     /// <summary>Value FL keeps in General\SplashImage: "&lt;frames&gt;-&lt;full path&gt;".</summary>
-    public static string SplashRegistryValue(string style) => $"{Frames}-{SplashFile(style)}";
+    public static string SplashRegistryValue(string spec) => $"{Frames}-{SplashFile(spec)}";
 
-    public static string EnsureSplash(string style, string flExe)
+    public static string EnsureSplash(string spec, string flExe)
     {
-        var path = SplashFile(style);
+        var path = SplashFile(spec);
         if (!File.Exists(path))
         {
             Directory.CreateDirectory(FlPaths.ThemesDir);
-            using var strip = RenderSplash(style, flExe, 1f);
+            var (style, accent) = ParseSpec(spec);
+            using var icon = LoadIcon(flExe);
+            using var strip = SplashRenderer.Render(style, accent, icon, 1f);
             strip.Save(path, ImageFormat.Png);
         }
         return path;
@@ -137,24 +155,30 @@ public static class FlMods
     static readonly Dictionary<string, string> previewCache = new();
 
     /// <summary>Half-size preview strip as a data URL for the UI.</summary>
-    public static string SplashPreview(string style, string flExe)
+    public static string SplashPreview(string spec, string flExe)
     {
-        if (previewCache.TryGetValue(style, out var hit)) return hit;
-        using var strip = RenderSplash(style, flExe, 0.5f);
+        var key = SpecKey(spec);
+        lock (previewCache)
+            if (previewCache.TryGetValue(key, out var hit)) return hit;
+        var (style, accent) = ParseSpec(spec);
+        using var icon = LoadIcon(flExe);
+        using var strip = SplashRenderer.Render(style, accent, icon, 0.5f);
         using var ms = new MemoryStream();
         strip.Save(ms, ImageFormat.Png);
-        return previewCache[style] = "data:image/png;base64," + Convert.ToBase64String(ms.ToArray());
+        var url = "data:image/png;base64," + Convert.ToBase64String(ms.ToArray());
+        lock (previewCache) previewCache[key] = url;
+        return url;
     }
 
-    /// <summary>Use a startup animation in every FL install (style "" puts FL's own splash back).</summary>
-    public static void ApplySplash(string style, IEnumerable<FlInstall> installs)
+    /// <summary>Use a startup animation in every FL install (spec "" puts FL's own splash back).</summary>
+    public static void ApplySplash(string spec, IEnumerable<FlInstall> installs)
     {
         var flExe = installs.Last().Exe;
-        if (style.Length > 0) EnsureSplash(style, flExe);
+        if (spec.Length > 0) EnsureSplash(spec, flExe);
         foreach (var i in installs)
         {
             using var k = Registry.CurrentUser.CreateSubKey($@"{FlInstalls.RegRoot}\{i.RegistryKey}\General");
-            if (style.Length > 0) k.SetValue("SplashImage", SplashRegistryValue(style), RegistryValueKind.String);
+            if (spec.Length > 0) k.SetValue("SplashImage", SplashRegistryValue(spec), RegistryValueKind.String);
             else if ((k.GetValue("SplashImage") as string ?? "").Contains(SplashPrefix)) k.DeleteValue("SplashImage", false);
         }
         // FL re-reads the theme's SplashAnim when it saves settings, so keep the shared current theme in step.
@@ -163,157 +187,32 @@ public static class FlMods
         {
             var t = FlTheme.Load(theme);
             var cur = t["SplashAnim"] ?? "";
-            if (style.Length > 0) t["SplashAnim"] = $"{Frames}-{Path.GetFileName(SplashFile(style))}";
+            if (spec.Length > 0) t["SplashAnim"] = $"{Frames}-{Path.GetFileName(SplashFile(spec))}";
             else if (cur.Contains(SplashPrefix)) t["SplashAnim"] = null;
             t.Save(theme);
         }
+        // drop strips no longer in use
+        var keep = spec.Length > 0 ? Path.GetFileName(SplashFile(spec)) : "";
+        if (Directory.Exists(FlPaths.ThemesDir))
+            foreach (var old in Directory.EnumerateFiles(FlPaths.ThemesDir, SplashPrefix + "*.png"))
+                if (!Path.GetFileName(old).Equals(keep, StringComparison.OrdinalIgnoreCase))
+                    try { File.Delete(old); } catch { }
     }
 
+    /// <summary>The spec currently set for the newest FL install, or "" for FL's own.</summary>
     public static string CurrentSplash(IEnumerable<FlInstall> installs)
     {
         var i = installs.LastOrDefault();
         if (i == null) return "";
-        var v = FlInstalls.GetGeneral(i, "SplashImage") ?? "";
-        var name = Path.GetFileNameWithoutExtension(v);
-        return name.StartsWith(SplashPrefix) ? name[SplashPrefix.Length..] : "";
+        var name = Path.GetFileNameWithoutExtension(FlInstalls.GetGeneral(i, "SplashImage") ?? "");
+        if (!name.StartsWith(SplashPrefix)) return "";
+        var parts = name[SplashPrefix.Length..].Split('_');
+        return parts.Length >= 2 ? $"{parts[0]}@{parts[1]}" : parts[0];
     }
 
     static Bitmap LoadIcon(string flExe)
     {
         using var icon = Icon.ExtractIcon(flExe, 0, 256) ?? Icon.ExtractAssociatedIcon(flExe)!;
         return icon.ToBitmap();
-    }
-
-    static float Clamp01(float v) => Math.Clamp(v, 0f, 1f);
-    static float EaseOut(float t) => 1 - MathF.Pow(1 - Clamp01(t), 3);
-    static float EaseOutBack(float t) { t = Clamp01(t); const float c = 1.9f; return 1 + (c + 1) * MathF.Pow(t - 1, 3) + c * MathF.Pow(t - 1, 2); }
-
-    public static Bitmap RenderSplash(string style, string flExe, float scale)
-    {
-        int fw = (int)(FrameW * scale), fh = (int)(FrameH * scale);
-        var strip = new Bitmap(fw * Frames, fh, PixelFormat.Format32bppArgb);
-        using var icon = LoadIcon(flExe);
-        using var g = Graphics.FromImage(strip);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-        float baseSize = 230 * scale;
-        var rnd = new Random(7);
-
-        for (int f = 0; f < Frames; f++)
-        {
-            float t = f / (float)(Frames - 1);
-            float cx = f * fw + fw / 2f, cy = fh / 2f;
-            g.SetClip(new RectangleF(f * fw, 0, fw, fh));
-
-            void DrawIcon(float size, float alpha, float angle = 0, float dx = 0, float dy = 0, float[]? tint = null)
-            {
-                if (size <= 1 || alpha <= 0.01f) return;
-                var state = g.Save();
-                g.TranslateTransform(cx + dx, cy + dy);
-                if (angle != 0) g.RotateTransform(angle);
-                var m = new ColorMatrix { Matrix33 = Clamp01(alpha) };
-                if (tint != null) { m.Matrix00 = tint[0]; m.Matrix11 = tint[1]; m.Matrix22 = tint[2]; }
-                using var ia = new ImageAttributes();
-                ia.SetColorMatrix(m);
-                g.DrawImage(icon, new Rectangle((int)(-size / 2), (int)(-size / 2), (int)size, (int)size), 0, 0, icon.Width, icon.Height, GraphicsUnit.Pixel, ia);
-                g.Restore(state);
-            }
-            void Ring(float radius, float width, float alpha, Color c)
-            {
-                if (radius <= 0 || alpha <= 0.01f) return;
-                using var pen = new Pen(Color.FromArgb((int)(255 * Clamp01(alpha)), c), Math.Max(1, width));
-                g.DrawEllipse(pen, cx - radius, cy - radius, radius * 2, radius * 2);
-            }
-            void Glow(float radius, float alpha, Color c)
-            {
-                if (radius <= 1 || alpha <= 0.01f) return;
-                using var path = new GraphicsPath();
-                path.AddEllipse(cx - radius, cy - radius, radius * 2, radius * 2);
-                using var br = new PathGradientBrush(path) { CenterColor = Color.FromArgb((int)(255 * Clamp01(alpha)), c), SurroundColors = new[] { Color.FromArgb(0, c) } };
-                g.FillEllipse(br, cx - radius, cy - radius, radius * 2, radius * 2);
-            }
-            var orange = Color.FromArgb(255, 160, 60);
-            var white = Color.White;
-
-            switch (style)
-            {
-                case "shockwave":
-                {
-                    float pop = EaseOutBack(t / 0.3f);
-                    Glow(baseSize * 0.9f * EaseOut(t / 0.4f), 0.35f * (1 - Clamp01((t - 0.4f) / 0.6f)) + 0.12f, orange);
-                    for (int r = 0; r < 3; r++)
-                    {
-                        float rt = Clamp01((t - 0.12f - r * 0.12f) / 0.55f);
-                        if (rt > 0 && rt < 1) Ring(baseSize * (0.45f + rt * 0.9f), 6 * scale * (1 - rt) + 1, (1 - rt) * 0.8f, r == 1 ? orange : white);
-                    }
-                    DrawIcon(baseSize * pop, Clamp01(t / 0.12f));
-                    break;
-                }
-                case "spin":
-                {
-                    float p = EaseOut(t / 0.7f);
-                    for (int k = 4; k >= 1; k--)
-                    {
-                        float pk = EaseOut((t - k * 0.035f) / 0.7f);
-                        if (pk > 0 && p < 0.999f) DrawIcon(baseSize * pk, 0.18f * (1 - p) * (5 - k) / 4f, -540 * (1 - pk));
-                    }
-                    Glow(baseSize * 0.75f, 0.25f * Clamp01((t - 0.55f) / 0.3f), orange);
-                    DrawIcon(baseSize * p, Clamp01(t / 0.2f), -540 * (1 - p));
-                    break;
-                }
-                case "glitch":
-                {
-                    float settle = Clamp01((t - 0.15f) / 0.6f);
-                    float jitter = (1 - settle) * 24 * scale;
-                    float alpha = Clamp01(t / 0.1f);
-                    bool off = f < 26 && rnd.NextDouble() < 0.25 * (1 - settle);
-                    if (!off)
-                    {
-                        DrawIcon(baseSize, alpha * 0.85f * (1 - settle), 0, -jitter * (float)rnd.NextDouble() - jitter * 0.4f, 0, new[] { 1f, 0f, 0f });
-                        DrawIcon(baseSize, alpha * 0.85f * (1 - settle), 0, jitter * (float)rnd.NextDouble() + jitter * 0.4f, 0, new[] { 0f, 0.6f, 1f });
-                        DrawIcon(baseSize, alpha * (0.35f + 0.65f * settle), 0, (float)(rnd.NextDouble() - 0.5) * jitter * 0.5f, 0);
-                        if (settle < 0.9f)
-                            for (int s = 0; s < 4; s++)
-                            {
-                                float y = cy + (float)(rnd.NextDouble() - 0.5) * baseSize;
-                                using var br = new SolidBrush(Color.FromArgb((int)(120 * (1 - settle)), rnd.Next(2) == 0 ? orange : white));
-                                g.FillRectangle(br, cx - baseSize * 0.6f + (float)(rnd.NextDouble() - 0.5) * jitter * 3, y, baseSize * 1.2f, 2 * scale + (float)rnd.NextDouble() * 4 * scale);
-                            }
-                    }
-                    break;
-                }
-                case "orbit":
-                {
-                    int dots = 16;
-                    float collapse = EaseOut(t / 0.65f);
-                    float radius = baseSize * (1.15f - collapse * 1.1f);
-                    for (int d = 0; d < dots; d++)
-                    {
-                        float a = d / (float)dots * MathF.PI * 2 + t * 7f;
-                        float dr = 7 * scale * (1 - collapse * 0.6f);
-                        float alpha = Clamp01(t / 0.1f) * (1 - Clamp01((t - 0.6f) / 0.12f));
-                        using var br = new SolidBrush(Color.FromArgb((int)(255 * alpha), d % 3 == 0 ? orange : white));
-                        g.FillEllipse(br, cx + MathF.Cos(a) * radius - dr, cy + MathF.Sin(a) * radius - dr, dr * 2, dr * 2);
-                    }
-                    float show = EaseOutBack((t - 0.58f) / 0.3f);
-                    Glow(baseSize * 0.8f, 0.4f * Clamp01((t - 0.55f) / 0.1f) * (1 - Clamp01((t - 0.75f) / 0.25f)) + 0.1f * Clamp01((t - 0.6f) / 0.2f), orange);
-                    DrawIcon(baseSize * show, Clamp01((t - 0.58f) / 0.1f));
-                    break;
-                }
-                default: // rise
-                {
-                    float up = EaseOutBack(t / 0.55f);
-                    float alpha = Clamp01(t / 0.25f);
-                    Glow(baseSize * 0.85f, 0.28f * alpha, orange);
-                    float rt = Clamp01((t - 0.35f) / 0.5f);
-                    if (rt > 0 && rt < 1) Ring(baseSize * (0.55f + rt * 0.6f), 4 * scale * (1 - rt) + 1, (1 - rt) * 0.7f, white);
-                    DrawIcon(baseSize * (0.6f + 0.4f * up), alpha, 0, 0, (1 - up) * 80 * scale);
-                    break;
-                }
-            }
-            g.ResetClip();
-        }
-        return strip;
     }
 }

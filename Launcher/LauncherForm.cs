@@ -10,6 +10,7 @@ public sealed class LauncherForm : Form
 {
     readonly WebView2 web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(18, 18, 22) };
     Bridge? bridge;
+    readonly FLPTools.Mods.WindowAnimator animator = new();
     FormWindowState savedState;
     FormBorderStyle savedBorder;
     bool fullscreen;
@@ -91,6 +92,28 @@ public sealed class LauncherForm : Form
         if (!MouseButtons.HasFlag(MouseButtons.Left)) return;
         ReleaseCapture();
         SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero);   // WM_NCLBUTTONDOWN, HTCAPTION
+    }
+
+    /// <summary>Turn FL window animations on/off to match the launcher settings (safe from any thread).</summary>
+    public void ApplyWindowAnimations(LauncherSettings s, string? extraTarget = null)
+    {
+        if (IsDisposed) return;
+        BeginInvoke(() =>
+        {
+            animator.DurationMs = Math.Clamp(s.FlWindowAnimMs, 80, 1000);
+            animator.Rise = s.FlWindowAnimRise;
+            animator.InsideFl = s.FlWindowAnimInside;
+            if (extraTarget != null) animator.Targets.Add(extraTarget);
+            if (s.FlWindowAnim || extraTarget != null) animator.Start(); else animator.Stop();
+        });
+    }
+
+    public void RemoveAnimationTarget(string name) => BeginInvoke(() => animator.Targets.Remove(name));
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        animator.Dispose();
+        base.OnFormClosed(e);
     }
 
     public void ToggleMaximize() => WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;

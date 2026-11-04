@@ -321,9 +321,26 @@ input[type="color"].sw::-webkit-color-swatch { border: 0; border-radius: 4px; }
 .splash:hover { outline-color: rgba(255,255,255,.4); }
 .splash.on { outline-color: #fff; }
 .splash span { font-size: 13px; }
-.pv-anim { width: 150px; height: 214px; background-repeat: no-repeat; background-size: calc(150px * var(--n)) 214px; animation: sprite 1.6s steps(var(--n)) infinite; }
+.pv-anim { width: 150px; height: 214px; background-repeat: no-repeat; background-size: calc(150px * var(--n)) 214px; animation: sprite 2.6s steps(var(--n)) infinite; }
+.pv-anim.loading { background: radial-gradient(circle, rgba(255,255,255,.08), transparent 60%); animation: breath 1.2s ease-in-out infinite; }
 @keyframes sprite { from { background-position: 0 0; } to { background-position: calc(-150px * var(--n)) 0; } }
 .pv-none { width: 150px; height: 214px; display: grid; place-items: center; color: var(--dim); font-size: 13px; }
+
+/* ------------------------------------------------------------------ window entrance and wake-up */
+body.intro #bg { animation: bgIntro 1.4s cubic-bezier(.2, .7, .2, 1) both; }
+@keyframes bgIntro { from { opacity: 0; transform: scale(1.12); filter: brightness(2.2) saturate(.4); } 45% { opacity: 1; } }
+body.intro .top { animation: dropIn .6s cubic-bezier(.2, .8, .2, 1) .35s both; }
+@keyframes dropIn { from { opacity: 0; transform: translateY(-18px); } }
+body.intro .rail .slot { animation: railIn .7s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i) * 60ms + 450ms); }
+body.intro .hero > * { animation: heroIn .6s cubic-bezier(.2, .8, .2, 1) both; }
+body.intro .hero > :nth-child(1) { animation-delay: .7s; } body.intro .hero > :nth-child(2) { animation-delay: .78s; }
+body.intro .hero > :nth-child(3) { animation-delay: .86s; } body.intro .hero > :nth-child(4) { animation-delay: .94s; }
+body.intro .card { animation-delay: calc(var(--i) * 60ms + 1s); }
+body.intro .hints { animation: fadeUp .6s ease 1.2s both; }
+body.intro #titlebar { animation: fadeUp .5s ease .2s both; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } }
+body.wake #app { animation: wake .7s cubic-bezier(.2, .8, .2, 1); }
+@keyframes wake { from { opacity: .3; transform: scale(.985); filter: brightness(1.4); } }
 
 /* ------------------------------------------------------------------ title bar */
 #titlebar { position: fixed; top: 0; left: 0; right: 0; height: 32px; z-index: 90; display: flex; }
