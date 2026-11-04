@@ -1,0 +1,37 @@
+# FLPTools mod pack
+"""Repeats the notes several times, optionally transposing and fading each copy."""
+import flpianoroll as flp
+
+LENGTHS = [('Length of the notes (rounded to beats)', 0), ('1 bar', 4), ('2 bars', 8), ('4 bars', 16)]
+
+
+def createDialog():
+    form = flp.ScriptDialog("Duplicate & Vary", "Copies are placed one after another.")
+    form.AddInputKnobInt('Copies', 1, 1, 15)
+    form.AddInputCombo('Copy length', [l[0] for l in LENGTHS], 0)
+    form.AddInputKnobInt('Transpose per copy', 0, -12, 12)
+    form.AddInputKnob('Velocity per copy', 1, 0.5, 1.2)
+    return form
+
+
+def apply(form):
+    copies = form.GetInputValue('Copies')
+    beats = LENGTHS[form.GetInputValue('Copy length')][1]
+    tr = form.GetInputValue('Transpose per copy')
+    vf = form.GetInputValue('Velocity per copy')
+    notes = [flp.score.getNote(i).clone() for i in range(flp.score.noteCount)]
+    if not notes:
+        return
+    t0 = min(n.time for n in notes)
+    if beats:
+        span = beats * flp.score.PPQ
+    else:
+        end = max(n.time + n.length for n in notes) - t0
+        span = max(1, -(-end // flp.score.PPQ)) * flp.score.PPQ
+    for c in range(1, copies + 1):
+        for src in notes:
+            n = src.clone()
+            n.time = src.time + c * span
+            n.number = max(0, min(131, src.number + tr * c))
+            n.velocity = max(0.01, min(1, src.velocity * vf ** c))
+            flp.score.addNote(n)

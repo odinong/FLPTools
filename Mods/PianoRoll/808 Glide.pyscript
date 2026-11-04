@@ -1,0 +1,28 @@
+# FLPTools mod pack
+"""Sets up slides for 808s: marks overlapping notes as slides, or makes every note glide into the next."""
+import flpianoroll as flp
+
+
+def createDialog():
+    form = flp.ScriptDialog("808 Glide", "Slide notes make the previous note glide to their pitch.")
+    form.AddInputCombo('Mode', ['Mark overlapping notes as slides', 'Glide every note into the next',
+                                'Remove all slides'], 0)
+    form.AddInputKnob('Overlap (1/64 steps)', 2, 1, 16)
+    return form
+
+
+def apply(form):
+    mode = form.GetInputValue('Mode')
+    overlap = int(form.GetInputValue('Overlap (1/64 steps)') * flp.score.PPQ / 16)
+    notes = sorted((flp.score.getNote(i) for i in range(flp.score.noteCount)), key=lambda n: n.time)
+    for i, n in enumerate(notes):
+        if mode == 2:
+            n.slide = False
+            continue
+        if i == 0:
+            continue
+        prev = notes[i - 1]
+        if mode == 1 and prev.number != n.number:
+            prev.length = max(prev.length, n.time - prev.time + overlap)
+        if prev.time < n.time < prev.time + prev.length and prev.number != n.number:
+            n.slide = True

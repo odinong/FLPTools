@@ -1,0 +1,60 @@
+# FLPTools mod pack
+"""Splits each note into a fast roll, with velocity and pitch shaping (trap hi-hat rolls)."""
+import flpianoroll as flp
+import time
+
+RATES = [('1/16', 4), ('1/24 (16th triplet)', 6), ('1/32', 8), ('1/48', 12), ('1/64', 16), ('1/96', 24)]
+
+
+def rng(seed=None):
+    state = time.time_ns() & 0x7fffffff if seed is None else seed
+    while True:
+        state = (1103515245 * state + 12345) & 0x7fffffff
+        yield state / 0x80000000
+
+
+def createDialog():
+    form = flp.ScriptDialog("Hi-Hat Rolls", "Each note becomes a roll that lasts as long as the note.")
+    form.AddInputCombo('Rate', [r[0] for r in RATES], 2)
+    form.AddInputCombo('Velocity curve', ['Flat', 'Fade in', 'Fade out', 'Random'], 1)
+    form.AddInputKnob('Curve amount', 0.6, 0, 1)
+    form.AddInputKnobInt('Pitch ramp (semitones)', 0, -12, 12)
+    form.AddInputKnob('Gate', 0.5, 0.1, 1)
+    form.AddInputKnob('Hit probability', 1, 0, 1)
+    return form
+
+
+def apply(form):
+    step = flp.score.PPQ / RATES[form.GetInputValue('Rate')][1]
+    curve = form.GetInputValue('Velocity curve')
+    amount = form.GetInputValue('Curve amount')
+    ramp = form.GetInputValue('Pitch ramp (semitones)')
+    gate = form.GetInputValue('Gate')
+    prob = form.GetInputValue('Hit probability')
+    r = rng()
+
+    originals = [flp.score.getNote(i).clone() for i in range(flp.score.noteCount)]
+    result = []
+    for src in originals:
+        hits = max(1, int(src.length // step))
+        for h in range(hits):
+            if h > 0 and next(r) > prob:
+                continue
+            t = h / max(1, hits - 1)
+            if curve == 1:
+                v = 1 - amount * (1 - t)
+            elif curve == 2:
+                v = 1 - amount * t
+            elif curve == 3:
+                v = 1 - amount * next(r)
+            else:
+                v = 1
+            n = src.clone()
+            n.time = int(src.time + h * step)
+            n.length = max(1, int(step * gate))
+            n.number = max(0, min(131, src.number + int(round(ramp * t))))
+            n.velocity = max(0.02, min(1, src.velocity * v))
+            result.append(n)
+    flp.score.clearNotes(False)
+    for n in result:
+        flp.score.addNote(n)

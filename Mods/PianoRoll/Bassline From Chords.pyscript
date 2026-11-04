@@ -1,0 +1,46 @@
+# FLPTools mod pack
+"""Writes a bassline from the lowest note of each chord."""
+import flpianoroll as flp
+
+PULSES = [('Same length as chord', 0), ('1/4 pulses', 1.0), ('1/8 pulses', 0.5), ('1/16 pulses', 0.25)]
+
+
+def createDialog():
+    form = flp.ScriptDialog("Bassline From Chords", "Chords are notes that start together.")
+    form.AddInputKnobInt('Octave shift', -1, -3, 1)
+    form.AddInputCombo('Rhythm', [p[0] for p in PULSES], 0)
+    form.AddInputKnob('Gate', 0.9, 0.1, 1)
+    form.AddInputCheckbox('Keep chords', True)
+    return form
+
+
+def apply(form):
+    shift = form.GetInputValue('Octave shift') * 12
+    pulse = PULSES[form.GetInputValue('Rhythm')][1] * flp.score.PPQ
+    gate = form.GetInputValue('Gate')
+    keep = form.GetInputValue('Keep chords')
+    notes = [flp.score.getNote(i).clone() for i in range(flp.score.noteCount)]
+    chords = {}
+    for n in notes:
+        chords.setdefault(n.time, []).append(n)
+    bass = []
+    for start in sorted(chords):
+        root = min(chords[start], key=lambda n: n.number)
+        p = root.number + shift
+        if not 0 <= p <= 131:
+            continue
+        if pulse <= 0:
+            pieces = [(start, root.length)]
+        else:
+            count = max(1, int(root.length // pulse))
+            pieces = [(start + k * pulse, pulse) for k in range(count)]
+        for t, length in pieces:
+            b = root.clone()
+            b.number = p
+            b.time = int(t)
+            b.length = max(1, int(length * gate))
+            bass.append(b)
+    if not keep:
+        flp.score.clearNotes(False)
+    for b in bass:
+        flp.score.addNote(b)

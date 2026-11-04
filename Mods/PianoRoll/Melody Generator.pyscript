@@ -1,0 +1,70 @@
+# FLPTools mod pack
+"""Writes a random melody in key, with controllable rhythm, range and step size."""
+import flpianoroll as flp
+import time
+
+KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+SCALES = [('Major', [0, 2, 4, 5, 7, 9, 11]), ('Natural minor', [0, 2, 3, 5, 7, 8, 10]),
+          ('Harmonic minor', [0, 2, 3, 5, 7, 8, 11]), ('Dorian', [0, 2, 3, 5, 7, 9, 10]),
+          ('Phrygian', [0, 1, 3, 5, 7, 8, 10]), ('Minor pentatonic', [0, 3, 5, 7, 10]),
+          ('Major pentatonic', [0, 2, 4, 7, 9])]
+LENGTHS = [('1/16', 0.25), ('1/8', 0.5), ('1/4', 1.0)]
+
+
+def rng(seed):
+    state = time.time_ns() & 0x7fffffff if seed is None else seed * 7919 + 1
+    while True:
+        state = (1103515245 * state + 12345) & 0x7fffffff
+        yield state / 0x80000000
+
+
+def createDialog():
+    form = flp.ScriptDialog("Melody Generator", "Pick a seed to get the same melody again.")
+    form.AddInputCombo('Key', KEYS, 9)
+    form.AddInputCombo('Scale', [s[0] for s in SCALES], 1)
+    form.AddInputKnobInt('Bars', 2, 1, 16)
+    form.AddInputCombo('Step', [l[0] for l in LENGTHS], 0)
+    form.AddInputKnob('Density', 0.6, 0.1, 1)
+    form.AddInputKnob('Long note chance', 0.3, 0, 1)
+    form.AddInputKnobInt('Octave', 5, 2, 8)
+    form.AddInputKnobInt('Range (octaves)', 1, 1, 3)
+    form.AddInputKnobInt('Max jump (scale steps)', 3, 1, 7)
+    form.AddInputCombo('Seed', ['Random'] + [str(i) for i in range(1, 31)], 0)
+    form.AddInputCheckbox('Replace existing notes', True)
+    return form
+
+
+def apply(form):
+    s = form.GetInputValue('Seed')
+    r = rng(None if s == 0 else s)
+    key = form.GetInputValue('Key')
+    steps = SCALES[form.GetInputValue('Scale')][1]
+    octave = form.GetInputValue('Octave')
+    span = form.GetInputValue('Range (octaves)')
+    pool = [octave * 12 + key + d + 12 * o for o in range(span) for d in steps] + [(octave + span) * 12 + key]
+    pool = [p for p in pool if 0 <= p <= 131]
+    step_len = flp.score.PPQ * LENGTHS[form.GetInputValue('Step')][1]
+    total = int(form.GetInputValue('Bars') * 4 * flp.score.PPQ / step_len)
+    density = form.GetInputValue('Density')
+    long_chance = form.GetInputValue('Long note chance')
+    jump = form.GetInputValue('Max jump (scale steps)')
+
+    if form.GetInputValue('Replace existing notes'):
+        flp.score.clearNotes(False)
+    idx = len(pool) // 3
+    t = 0
+    while t < total:
+        if next(r) < density:
+            idx = max(0, min(len(pool) - 1, idx + int(round((next(r) * 2 - 1) * jump))))
+            length = 1
+            while t + length < total and next(r) < long_chance and length < 4:
+                length += 1
+            n = flp.Note()
+            n.number = pool[idx]
+            n.time = int(t * step_len)
+            n.length = int(length * step_len * 0.95)
+            n.velocity = 0.9 if t % 4 == 0 else 0.65 + next(r) * 0.3
+            flp.score.addNote(n)
+            t += length
+        else:
+            t += 1

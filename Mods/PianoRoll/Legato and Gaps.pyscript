@@ -1,0 +1,27 @@
+# FLPTools mod pack
+"""Extends notes to the next note (legato) or leaves an exact gap between them."""
+import flpianoroll as flp
+
+
+def createDialog():
+    form = flp.ScriptDialog("Legato & Gaps", "Chords (notes starting together) are kept together.")
+    form.AddInputCombo('Mode', ['Legato (touch next note)', 'Leave gap before next note', 'Overlap next note'], 0)
+    form.AddInputKnob('Gap / overlap (1/64 steps)', 1, 0, 16)
+    return form
+
+
+def apply(form):
+    mode = form.GetInputValue('Mode')
+    amount = int(form.GetInputValue('Gap / overlap (1/64 steps)') * flp.score.PPQ / 16)
+    notes = [flp.score.getNote(i) for i in range(flp.score.noteCount)]
+    starts = sorted({n.time for n in notes})
+    for n in notes:
+        later = [s for s in starts if s > n.time]
+        if not later:
+            continue
+        target = later[0] - n.time
+        if mode == 1:
+            target -= amount
+        elif mode == 2:
+            target += amount
+        n.length = max(1, target)

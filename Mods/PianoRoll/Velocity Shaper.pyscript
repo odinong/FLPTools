@@ -1,0 +1,44 @@
+# FLPTools mod pack
+"""Sets, ramps, randomizes or compresses note velocities."""
+import flpianoroll as flp
+import time
+
+
+def createDialog():
+    form = flp.ScriptDialog("Velocity Shaper", "Value is the target level; Amount is how strongly the mode applies.")
+    form.AddInputCombo('Mode', ['Set', 'Scale', 'Ramp up', 'Ramp down', 'Randomize', 'Compress', 'Accent downbeats'], 2)
+    form.AddInputKnob('Value', 0.8, 0, 1)
+    form.AddInputKnob('Amount', 0.5, 0, 1)
+    return form
+
+
+def apply(form):
+    mode = form.GetInputValue('Mode')
+    value = form.GetInputValue('Value')
+    amount = form.GetInputValue('Amount')
+    notes = [flp.score.getNote(i) for i in range(flp.score.noteCount)]
+    if not notes:
+        return
+    t0 = min(n.time for n in notes)
+    span = max(1, max(n.time for n in notes) - t0)
+    avg = sum(n.velocity for n in notes) / len(notes)
+    state = time.time_ns() & 0x7fffffff
+    for n in notes:
+        v = n.velocity
+        pos = (n.time - t0) / span
+        if mode == 0:
+            v = v + (value - v) * amount
+        elif mode == 1:
+            v = v * value * 2
+        elif mode == 2:
+            v = v * (1 - amount) + amount * value * (0.2 + 0.8 * pos)
+        elif mode == 3:
+            v = v * (1 - amount) + amount * value * (1 - 0.8 * pos)
+        elif mode == 4:
+            state = (1103515245 * state + 12345) & 0x7fffffff
+            v = v + amount * (state / 0x80000000 * 2 - 1) * 0.5
+        elif mode == 5:
+            v = avg + (v - avg) * (1 - amount)
+        elif mode == 6:
+            v = value if n.time % flp.score.PPQ == 0 else v * (1 - amount * 0.5)
+        n.velocity = max(0.01, min(1, v))

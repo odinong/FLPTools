@@ -1,0 +1,41 @@
+# FLPTools mod pack
+"""Removes notes randomly, by pattern, by length or by velocity."""
+import flpianoroll as flp
+import time
+
+
+def createDialog():
+    form = flp.ScriptDialog("Thin Out", "Probability is the chance a note is removed (or the velocity cutoff).")
+    form.AddInputCombo('Mode', ['Random', 'Keep every Nth', 'Remove every Nth', 'Remove notes shorter than 1/N beat',
+                                'Remove notes quieter than Probability'], 0)
+    form.AddInputKnob('Probability', 0.3, 0, 1)
+    form.AddInputKnobInt('N', 2, 2, 16)
+    form.AddInputCombo('Seed', ['Random'] + [str(i) for i in range(1, 21)], 0)
+    return form
+
+
+def apply(form):
+    mode = form.GetInputValue('Mode')
+    prob = form.GetInputValue('Probability')
+    nth = form.GetInputValue('N')
+    s = form.GetInputValue('Seed')
+    state = time.time_ns() & 0x7fffffff if s == 0 else s * 104729
+    notes = sorted((flp.score.getNote(i).clone() for i in range(flp.score.noteCount)), key=lambda n: (n.time, n.number))
+    keep = []
+    for i, n in enumerate(notes):
+        state = (1103515245 * state + 12345) & 0x7fffffff
+        if mode == 0:
+            ok = state / 0x80000000 >= prob
+        elif mode == 1:
+            ok = i % nth == 0
+        elif mode == 2:
+            ok = i % nth != nth - 1
+        elif mode == 3:
+            ok = n.length >= flp.score.PPQ / nth
+        else:
+            ok = n.velocity >= prob
+        if ok:
+            keep.append(n)
+    flp.score.clearNotes(False)
+    for n in keep:
+        flp.score.addNote(n)

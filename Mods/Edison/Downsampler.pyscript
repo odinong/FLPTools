@@ -1,0 +1,32 @@
+# FLPTools mod pack
+from enveditor import *
+
+
+def createDialog():
+    form = ScriptDialog('Downsampler', 'Sample-and-hold rate reduction for lo-fi / retro grit.')
+    form.AddInputKnob('Target rate (Hz)', 8000, 500, 44100)
+    form.AddInputKnob('Mix', 1, 0, 1)
+    return form
+
+
+def apply(form):
+    x1 = Editor.SelectionStartS
+    x2 = Editor.SelectionEndS
+    if x2 <= x1:
+        x1, x2 = 0, EditorSample.Length - 1
+    ratio = max(1.0, EditorSample.SampleRate / form.GetInputValue('Target rate (Hz)'))
+    mix = form.GetInputValue('Mix')
+    chans = EditorSample.NumChans
+    held = [0.0] * chans
+    next_grab = 0.0
+    for i, n in enumerate(range(x1, x2 + 1)):
+        if i % 20000 == 0:
+            Utils.ProgressMsg('Downsampling', i, x2 - x1)
+        grab = i >= next_grab
+        if grab:
+            next_grab += ratio
+        for c in range(chans):
+            s = EditorSample.GetSampleAt(n, c)
+            if grab:
+                held[c] = s
+            EditorSample.SetSampleAt(n, c, s * (1 - mix) + held[c] * mix)

@@ -1,0 +1,28 @@
+# FLPTools mod pack
+"""Plays the notes backwards and/or flips them upside down."""
+import flpianoroll as flp
+
+
+def createDialog():
+    form = flp.ScriptDialog("Reverse & Mirror", "Reverse flips time; Mirror flips pitch around the chosen center.")
+    form.AddInputCombo('Mode', ['Reverse time', 'Mirror pitch', 'Both'], 0)
+    form.AddInputCombo('Mirror center', ['Middle of the notes', 'C5 (60)', 'Lowest note', 'Highest note'], 0)
+    return form
+
+
+def apply(form):
+    mode = form.GetInputValue('Mode')
+    center_mode = form.GetInputValue('Mirror center')
+    notes = [flp.score.getNote(i) for i in range(flp.score.noteCount)]
+    if not notes:
+        return
+    t0 = min(n.time for n in notes)
+    t1 = max(n.time + n.length for n in notes)
+    lo = min(n.number for n in notes)
+    hi = max(n.number for n in notes)
+    doubled_center = [lo + hi, 120, lo * 2, hi * 2][center_mode]
+    for n in notes:
+        if mode in (0, 2):
+            n.time = t0 + t1 - (n.time + n.length)
+        if mode in (1, 2):
+            n.number = max(0, min(131, doubled_center - n.number))

@@ -1,0 +1,47 @@
+# FLPTools mod pack
+from enveditor import *
+import math
+
+
+def createDialog():
+    form = ScriptDialog('Saturator', 'Soft clipping / warm saturation.')
+    form.AddInputCombo('Type', 'Tanh (warm),Soft clip,Hard clip,Foldback', 0)
+    form.AddInputKnob('Drive', 2, 1, 20)
+    form.AddInputKnob('Mix', 1, 0, 1)
+    form.AddInputKnob('Output', 0.8, 0, 1.5)
+    return form
+
+
+def sat(x, kind):
+    if kind == 0:
+        return math.tanh(x)
+    if kind == 1:
+        if x > 1:
+            return 2 / 3
+        if x < -1:
+            return -2 / 3
+        return x - x * x * x / 3
+    if kind == 2:
+        return max(-1.0, min(1.0, x))
+    while x > 1 or x < -1:
+        x = 2 - x if x > 1 else -2 - x
+    return x
+
+
+def apply(form):
+    x1 = Editor.SelectionStartS
+    x2 = Editor.SelectionEndS
+    if x2 <= x1:
+        x1, x2 = 0, EditorSample.Length - 1
+    kind = form.GetInputValue('Type')
+    drive = form.GetInputValue('Drive')
+    mix = form.GetInputValue('Mix')
+    out = form.GetInputValue('Output')
+    norm = 1 / sat(drive, kind) if kind != 2 and sat(drive, kind) != 0 else 1
+    for n in range(x1, x2 + 1):
+        if n % 20000 == 0:
+            Utils.ProgressMsg('Saturating', n - x1, x2 - x1)
+        for c in range(EditorSample.NumChans):
+            s = EditorSample.GetSampleAt(n, c)
+            w = sat(s * drive, kind) * min(norm, 1.5)
+            EditorSample.SetSampleAt(n, c, (s * (1 - mix) + w * mix) * out)

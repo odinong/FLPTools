@@ -1,0 +1,26 @@
+# FLPTools mod pack
+from enveditor import *
+import math
+
+
+def createDialog():
+    form = ScriptDialog('Gain To Peak', 'Normalizes the selection so its loudest sample hits the target level.')
+    form.AddInputKnob('Target (dBFS)', -0.3, -24, 0)
+    return form
+
+
+def apply(form):
+    x1 = Editor.SelectionStartS
+    x2 = Editor.SelectionEndS
+    if x2 <= x1:
+        x1, x2 = 0, EditorSample.Length - 1
+    peak = 0.0
+    for n in range(x1, x2 + 1):
+        if n % 50000 == 0:
+            Utils.ProgressMsg('Measuring', n - x1, x2 - x1)
+        for c in range(EditorSample.NumChans):
+            peak = max(peak, abs(EditorSample.GetSampleAt(n, c)))
+    if peak <= 0:
+        return
+    gain = math.pow(10, form.GetInputValue('Target (dBFS)') / 20) / peak
+    EditorSample.AmpFromTo(x1, x2, gain)

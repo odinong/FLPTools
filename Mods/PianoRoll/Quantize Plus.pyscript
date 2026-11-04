@@ -1,0 +1,32 @@
+# FLPTools mod pack
+"""Quantize with strength, optional end quantize and swing."""
+import flpianoroll as flp
+
+GRIDS = [('1/4', 1.0), ('1/8', 0.5), ('1/8 triplet', 1 / 3), ('1/16', 0.25), ('1/16 triplet', 1 / 6),
+         ('1/32', 0.125), ('1/64', 0.0625)]
+
+
+def createDialog():
+    form = flp.ScriptDialog("Quantize Plus", "Strength 1 = hard quantize. Swing delays every second grid step.")
+    form.AddInputCombo('Grid', [g[0] for g in GRIDS], 3)
+    form.AddInputKnob('Strength', 1, 0, 1)
+    form.AddInputKnob('Swing', 0, 0, 1)
+    form.AddInputCheckbox('Quantize note ends', False)
+    return form
+
+
+def apply(form):
+    grid = flp.score.PPQ * GRIDS[form.GetInputValue('Grid')][1]
+    strength = form.GetInputValue('Strength')
+    swing = form.GetInputValue('Swing')
+    ends = form.GetInputValue('Quantize note ends')
+    for i in range(flp.score.noteCount):
+        n = flp.score.getNote(i)
+        end = n.time + n.length
+        step = round(n.time / grid)
+        target = step * grid + (grid * 0.5 * swing if step % 2 == 1 else 0)
+        n.time = max(0, int(round(n.time + (target - n.time) * strength)))
+        if ends:
+            end_target = max(round(end / grid), step + 1) * grid
+            end = end + (end_target - end) * strength
+        n.length = max(1, int(round(end - n.time)))

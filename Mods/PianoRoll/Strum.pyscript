@@ -1,0 +1,38 @@
+# FLPTools mod pack
+"""Offsets the notes of each chord like a guitar strum."""
+import flpianoroll as flp
+
+
+def createDialog():
+    form = flp.ScriptDialog("Strum", "Notes that start together are treated as a chord and spread out in time.")
+    form.AddInputKnob('Spread (1/64 steps)', 1, 0, 8)
+    form.AddInputCombo('Direction', ['Down (low to high)', 'Up (high to low)', 'Alternate', 'Random'], 0)
+    form.AddInputKnob('Velocity fade', 0.1, 0, 0.8)
+    form.AddInputCheckbox('Keep note ends', True)
+    return form
+
+
+def apply(form):
+    step = form.GetInputValue('Spread (1/64 steps)') * flp.score.PPQ / 16
+    direction = form.GetInputValue('Direction')
+    fade = form.GetInputValue('Velocity fade')
+    keep_ends = form.GetInputValue('Keep note ends')
+    chords = {}
+    for i in range(flp.score.noteCount):
+        n = flp.score.getNote(i)
+        chords.setdefault(n.time, []).append(n)
+    seed = 12345
+    for k, start in enumerate(sorted(chords)):
+        notes = sorted(chords[start], key=lambda n: n.number)
+        down = direction == 0 or (direction == 2 and k % 2 == 0)
+        if direction == 3:
+            seed = (1103515245 * seed + 12345) & 0x7fffffff
+            down = seed % 2 == 0
+        if not down:
+            notes.reverse()
+        for j, n in enumerate(notes):
+            end = n.time + n.length
+            n.time = start + int(round(j * step))
+            if keep_ends:
+                n.length = max(1, end - n.time)
+            n.velocity = max(0.02, n.velocity * (1 - fade * j / max(1, len(notes) - 1)))

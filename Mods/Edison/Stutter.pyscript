@@ -1,0 +1,33 @@
+# FLPTools mod pack
+from enveditor import *
+
+
+def createDialog():
+    form = ScriptDialog('Stutter', 'Repeats the start of the selection over the whole selection.')
+    form.AddInputKnob('Slice (ms)', 80, 5, 1000)
+    form.AddInputKnob('Decay per repeat', 0.9, 0.3, 1)
+    form.AddInputKnob('Edge fade (ms)', 3, 0, 30)
+    return form
+
+
+def apply(form):
+    x1 = Editor.SelectionStartS
+    x2 = Editor.SelectionEndS
+    if x2 <= x1:
+        x1, x2 = 0, EditorSample.Length - 1
+    slice_len = max(2, int(EditorSample.MSToSamples(form.GetInputValue('Slice (ms)'))))
+    decay = form.GetInputValue('Decay per repeat')
+    fade = int(EditorSample.MSToSamples(form.GetInputValue('Edge fade (ms)')))
+    chans = EditorSample.NumChans
+    slice_len = min(slice_len, x2 - x1 + 1)
+    src = [[EditorSample.GetSampleAt(x1 + i, c) for i in range(slice_len)] for c in range(chans)]
+    total = x2 - x1 + 1
+    for i in range(total):
+        if i % 20000 == 0:
+            Utils.ProgressMsg('Stutter', i, total)
+        rep, k = divmod(i, slice_len)
+        g = decay ** rep
+        if fade > 0:
+            g *= min(1.0, k / fade, (slice_len - 1 - k) / fade if slice_len - 1 - k < fade else 1.0)
+        for c in range(chans):
+            EditorSample.SetSampleAt(x1 + i, c, src[c][k] * g)

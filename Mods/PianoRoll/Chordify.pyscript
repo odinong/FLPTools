@@ -1,0 +1,61 @@
+# FLPTools mod pack
+"""Turns every note into a chord, either in key or with a fixed shape."""
+import flpianoroll as flp
+
+KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+SCALES = [('Major', [0, 2, 4, 5, 7, 9, 11]), ('Natural minor', [0, 2, 3, 5, 7, 8, 10]),
+          ('Harmonic minor', [0, 2, 3, 5, 7, 8, 11]), ('Dorian', [0, 2, 3, 5, 7, 9, 10]),
+          ('Phrygian', [0, 1, 3, 5, 7, 8, 10]), ('Mixolydian', [0, 2, 4, 5, 7, 9, 10])]
+SHAPES = [('Triad (in key)', None, [2, 4]), ('7th (in key)', None, [2, 4, 6]), ('9th (in key)', None, [2, 4, 6, 8]),
+          ('Power (1-5-8)', [7, 12], None), ('Major', [4, 7], None), ('Minor', [3, 7], None),
+          ('Sus2', [2, 7], None), ('Sus4', [5, 7], None), ('Maj7', [4, 7, 11], None), ('Min7', [3, 7, 10], None)]
+
+
+def degree_up(n, steps_up, scale):
+    """Move n up by a number of scale steps (n is snapped down into the scale first)."""
+    while n % 12 not in scale:
+        n -= 1
+    for _ in range(steps_up):
+        n += 1
+        while n % 12 not in scale:
+            n += 1
+    return n
+
+
+def createDialog():
+    form = flp.ScriptDialog("Chordify", "Builds a chord on every note. In-key shapes follow the chosen scale.")
+    form.AddInputCombo('Chord', [s[0] for s in SHAPES], 0)
+    form.AddInputCombo('Key', KEYS, 0)
+    form.AddInputCombo('Scale', [s[0] for s in SCALES], 1)
+    form.AddInputKnobInt('Inversion', 0, 0, 3)
+    form.AddInputCheckbox('Open voicing', False)
+    form.AddInputKnob('Added note velocity', 0.9, 0, 1)
+    return form
+
+
+def apply(form):
+    name, fixed, degrees = SHAPES[form.GetInputValue('Chord')]
+    key = form.GetInputValue('Key')
+    scale = sorted({(key + s) % 12 for s in SCALES[form.GetInputValue('Scale')][1]})
+    inversion = form.GetInputValue('Inversion')
+    open_voicing = form.GetInputValue('Open voicing')
+    vel_scale = form.GetInputValue('Added note velocity')
+
+    originals = [flp.score.getNote(i) for i in range(flp.score.noteCount)]
+    for root in originals:
+        if fixed is not None:
+            pitches = [root.number] + [root.number + iv for iv in fixed]
+        else:
+            pitches = [root.number] + [degree_up(root.number, d, scale) for d in degrees]
+        for _ in range(min(inversion, len(pitches) - 1)):
+            pitches = pitches[1:] + [pitches[0] + 12]
+        if open_voicing and len(pitches) > 2:
+            pitches[1] += 12
+        pitches.sort()
+        base_velocity = root.velocity
+        root.number = max(0, min(pitches[0], 131))
+        for p in pitches[1:]:
+            note = root.clone()
+            note.number = max(0, min(p, 131))
+            note.velocity = base_velocity * vel_scale
+            flp.score.addNote(note)

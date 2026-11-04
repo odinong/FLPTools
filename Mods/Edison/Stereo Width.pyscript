@@ -1,0 +1,33 @@
+# FLPTools mod pack
+from enveditor import *
+
+
+def createDialog():
+    form = ScriptDialog('Stereo Width', 'Mid/side width. 0 = mono, 1 = unchanged, 2 = extra wide.')
+    form.AddInputKnob('Width', 1.5, 0, 2)
+    form.AddInputCheckbox('Swap left/right', False)
+    return form
+
+
+def apply(form):
+    if EditorSample.NumChans < 2:
+        Utils.ShowMessage('Stereo Width needs a stereo sample.')
+        return
+    x1 = Editor.SelectionStartS
+    x2 = Editor.SelectionEndS
+    if x2 <= x1:
+        x1, x2 = 0, EditorSample.Length - 1
+    width = form.GetInputValue('Width')
+    swap = form.GetInputValue('Swap left/right')
+    for n in range(x1, x2 + 1):
+        if n % 20000 == 0:
+            Utils.ProgressMsg('Width', n - x1, x2 - x1)
+        l = EditorSample.GetSampleAt(n, 0)
+        r = EditorSample.GetSampleAt(n, 1)
+        mid = (l + r) * 0.5
+        side = (l - r) * 0.5 * width
+        l, r = mid + side, mid - side
+        if swap:
+            l, r = r, l
+        EditorSample.SetSampleAt(n, 0, l)
+        EditorSample.SetSampleAt(n, 1, r)

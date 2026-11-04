@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLPTools</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="titlebar"></div>
+<div id="bg"><canvas id="fx"></canvas><div class="layer"></div><div class="layer"></div><div class="shade"></div></div>
+<div id="app" hidden>
+  <header class="top">
+    <nav class="tabs-top" id="tabs"></nav>
+    <div class="top-right"><span class="running-note" id="runNote"></span><span id="clock"></span></div>
+  </header>
+  <div class="rail" id="rail"></div>
+  <section class="hero" id="hero"></section>
+  <div class="cards" id="cards"></div>
+  <footer class="hints" id="hints"></footer>
+</div>
+<div id="pages"></div>
+<div id="launchFx" hidden></div>
+<div id="toasts"></div>
+<div id="modal" hidden></div>
+<script src="fx.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

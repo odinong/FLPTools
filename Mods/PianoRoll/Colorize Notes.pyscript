@@ -1,0 +1,32 @@
+# FLPTools mod pack
+"""Colors notes by pitch, octave, velocity, length or chord position so parts are easy to read."""
+import flpianoroll as flp
+
+
+def createDialog():
+    form = flp.ScriptDialog("Colorize Notes", "Sets note colors (1-16).")
+    form.AddInputCombo('Color by', ['Pitch class (C..B)', 'Octave', 'Velocity', 'Length', 'Chord position'], 0)
+    return form
+
+
+def apply(form):
+    mode = form.GetInputValue('Color by')
+    notes = [flp.score.getNote(i) for i in range(flp.score.noteCount)]
+    if not notes:
+        return
+    longest = max(n.length for n in notes)
+    chords = {}
+    for i, n in enumerate(notes):
+        chords.setdefault(n.time, []).append((n.number, i))
+    for i, n in enumerate(notes):
+        if mode == 0:
+            c = n.number % 12
+        elif mode == 1:
+            c = n.number // 12
+        elif mode == 2:
+            c = int(n.velocity * 15.99)
+        elif mode == 3:
+            c = int(n.length / longest * 15.99)
+        else:
+            c = sorted(chords[n.time]).index((n.number, i))
+        n.color = max(0, min(15, c))

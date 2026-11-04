@@ -1,0 +1,36 @@
+# FLPTools mod pack
+from enveditor import *
+
+
+def createDialog():
+    form = ScriptDialog('Tape Stop', 'Slows the selection down to a stop, like a tape machine losing power.')
+    form.AddInputKnob('Curve', 1.5, 0.5, 4)
+    form.AddInputCombo('Mode', 'Stop,Start (spin up)', 0)
+    return form
+
+
+def apply(form):
+    x1 = Editor.SelectionStartS
+    x2 = Editor.SelectionEndS
+    if x2 <= x1:
+        x1, x2 = 0, EditorSample.Length - 1
+    curve = form.GetInputValue('Curve')
+    spin_up = form.GetInputValue('Mode') == 1
+    count = x2 - x1 + 1
+    chans = EditorSample.NumChans
+    src = [[EditorSample.GetSampleAt(x1 + i, c) for i in range(count)] for c in range(chans)]
+    pos = 0.0
+    for i in range(count):
+        if i % 20000 == 0:
+            Utils.ProgressMsg('Tape stop', i, count)
+        t = i / count
+        speed = (t ** curve) if spin_up else (1 - t) ** curve
+        k = int(pos)
+        f = pos - k
+        for c in range(chans):
+            if k + 1 < count:
+                v = src[c][k] * (1 - f) + src[c][k + 1] * f
+            else:
+                v = 0.0
+            EditorSample.SetSampleAt(x1 + i, c, v)
+        pos += speed

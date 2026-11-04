@@ -1,0 +1,27 @@
+# FLPTools mod pack
+"""Adds octave or fifth copies of every note."""
+import flpianoroll as flp
+
+MODES = [('Octave up', [12]), ('Octave down', [-12]), ('Octave up and down', [12, -12]),
+         ('Fifth up', [7]), ('Fifth + octave up', [7, 12]), ('Two octaves up', [12, 24])]
+
+
+def createDialog():
+    form = flp.ScriptDialog("Octave Doubler", "Adds layered copies of each note.")
+    form.AddInputCombo('Add', [m[0] for m in MODES], 0)
+    form.AddInputKnob('Copy velocity', 0.8, 0, 1)
+    return form
+
+
+def apply(form):
+    intervals = MODES[form.GetInputValue('Add')][1]
+    vel = form.GetInputValue('Copy velocity')
+    originals = [flp.score.getNote(i) for i in range(flp.score.noteCount)]
+    for src in originals:
+        for iv in intervals:
+            p = src.number + iv
+            if 0 <= p <= 131:
+                n = src.clone()
+                n.number = p
+                n.velocity = src.velocity * vel
+                flp.score.addNote(n)
